@@ -1,0 +1,139 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUser(data) {
+      return data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 100 &&
+             data.phoneNumber is string && data.phoneNumber.size() <= 30 &&
+             (!('circleId' in data) || (data.circleId is string && data.circleId.size() <= 128)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    function isValidEmergencyAlert(data) {
+      return data.alertId is string && data.alertId.size() > 0 && data.alertId.size() <= 128 &&
+             data.senderId is string && data.senderId.size() > 0 && data.senderId.size() <= 128 &&
+             data.senderName is string && data.senderName.size() > 0 && data.senderName.size() <= 100 &&
+             (!('senderPhone' in data) || (data.senderPhone is string && data.senderPhone.size() <= 30)) &&
+             (!('circleId' in data) || (data.circleId is string && data.circleId.size() <= 128)) &&
+             data.status in ['ACTIVE', 'RESOLVED'] &&
+             data.latitude is number && data.latitude >= -90.0 && data.latitude <= 90.0 &&
+             data.longitude is number && data.longitude >= -180.0 && data.longitude <= 180.0 &&
+             (!('accuracy' in data) || (data.accuracy is number && data.accuracy >= 0.0)) &&
+             (!('address' in data) || (data.address is string && data.address.size() <= 500)) &&
+             data.triggerMethod in ['MANUAL_SOS', 'VOICE_TRIGGER', 'SHAKE_TRIGGER', 'TEST_DRILL'] &&
+             data.authorizedUids is list && data.authorizedUids.size() <= 50 &&
+             (!('acknowledgments' in data) || data.acknowledgments is map) &&
+             (!('deliveryStatuses' in data) || data.deliveryStatuses is map) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    function isValidSafetyCircle(data) {
+      return data.circleId is string && data.circleId.size() > 0 && data.circleId.size() <= 128 &&
+             data.circleName is string && data.circleName.size() > 0 && data.circleName.size() <= 100 &&
+             data.ownerId is string && data.ownerId.size() > 0 && data.ownerId.size() <= 128 &&
+             data.inviteCode is string && data.inviteCode.size() > 0 && data.inviteCode.size() <= 32 &&
+             data.memberUids is list && data.memberUids.size() <= 50 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    // --- Users Collection ---
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || request.auth.uid == userId);
+      allow create: if isSignedIn() && request.auth.uid == userId && incoming().userId == request.auth.uid && isValidUser(incoming());
+      allow update: if isSignedIn() && request.auth.uid == userId && incoming().userId == existing().userId && isValidUser(incoming()) &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'phoneNumber', 'circleId', 'updatedAt']);
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // --- Emergency Alerts Collection (Realtime Backend SOS Synchronization) ---
+    match /emergency_alerts/{alertId} {
+      allow get: if isSignedIn() && (
+        resource.data.senderId == request.auth.uid ||
+        request.auth.uid in resource.data.authorizedUids
+      );
+
+      allow list: if isSignedIn() && (
+        resource.data.senderId == request.auth.uid ||
+        request.auth.uid in resource.data.authorizedUids
+      );
+
+      allow create: if isSignedIn() &&
+                    incoming().senderId == request.auth.uid &&
+                    incoming().alertId == alertId &&
+                    isValidEmergencyAlert(incoming());
+
+      allow update: if isSignedIn() && isValidEmergencyAlert(incoming()) && (
+        // Sender updating location coordinates, accuracy, delivery status, or resolving emergency
+        (existing().senderId == request.auth.uid &&
+         incoming().senderId == existing().senderId &&
+         incoming().createdAt == existing().createdAt &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['latitude', 'longitude', 'accuracy', 'address', 'status', 'updatedAt', 'deliveryStatuses', 'acknowledgments'])) ||
+        // Authorized contact/circle member acknowledging or posting response message
+        (request.auth.uid in existing().authorizedUids &&
+         incoming().senderId == existing().senderId &&
+         incoming().createdAt == existing().createdAt &&
+         incoming().status == existing().status &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['acknowledgments', 'deliveryStatuses', 'updatedAt']))
+      );
+
+      allow delete: if isSignedIn() && existing().senderId == request.auth.uid;
+    }
+
+    // --- Safety Circles Collection ---
+    match /safety_circles/{circleId} {
+      allow get: if isSignedIn() && (
+        resource.data.ownerId == request.auth.uid ||
+        request.auth.uid in resource.data.memberUids
+      );
+
+      allow list: if isSignedIn() && (
+        resource.data.ownerId == request.auth.uid ||
+        request.auth.uid in resource.data.memberUids
+      );
+
+      allow create: if isSignedIn() &&
+                    incoming().ownerId == request.auth.uid &&
+                    incoming().circleId == circleId &&
+                    isValidSafetyCircle(incoming());
+
+      allow update: if isSignedIn() && isValidSafetyCircle(incoming()) && (
+        (existing().ownerId == request.auth.uid &&
+         incoming().ownerId == existing().ownerId &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['circleName', 'memberUids', 'updatedAt'])) ||
+        (request.auth.uid in existing().memberUids &&
+         incoming().ownerId == existing().ownerId &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'updatedAt']))
+      );
+
+      allow delete: if isSignedIn() && existing().ownerId == request.auth.uid;
+    }
+
+  }
+}

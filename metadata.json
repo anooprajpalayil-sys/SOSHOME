@@ -1,0 +1,6 @@
+{
+  "name": "SafeVoice",
+  "description": "Women's Safety & Family Guardian with secret voice activation, GPS live tracking, and emergency evidence recording.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

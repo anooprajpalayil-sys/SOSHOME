@@ -1,0 +1,71 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with emergency identification",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Auth UID" },
+        "displayName": { "type": "string", "description": "Verified display name" },
+        "phoneNumber": { "type": "string", "description": "Phone number" },
+        "circleId": { "type": "string", "description": "Safety Circle ID" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "displayName", "phoneNumber", "createdAt"]
+    },
+    "EmergencyAlert": {
+      "title": "EmergencyAlert",
+      "description": "Real-time backend SOS alert payload with telemetry and responses",
+      "type": "object",
+      "properties": {
+        "alertId": { "type": "string", "description": "Unique alert ID" },
+        "senderId": { "type": "string", "description": "Verified sender UID" },
+        "senderName": { "type": "string", "description": "Sender display name" },
+        "senderPhone": { "type": "string", "description": "Sender phone number" },
+        "circleId": { "type": "string", "description": "Associated circle ID" },
+        "status": { "type": "string", "enum": ["ACTIVE", "RESOLVED"] },
+        "latitude": { "type": "number", "description": "Current latitude" },
+        "longitude": { "type": "number", "description": "Current longitude" },
+        "accuracy": { "type": "number", "description": "Location accuracy in meters" },
+        "address": { "type": "string", "description": "Reverse-geocoded address" },
+        "triggerMethod": { "type": "string", "enum": ["MANUAL_SOS", "VOICE_TRIGGER", "SHAKE_TRIGGER", "TEST_DRILL"] },
+        "authorizedUids": { "type": "array", "description": "List of authorized recipient UIDs" },
+        "acknowledgments": { "type": "object", "description": "Map of responder acknowledgments" },
+        "deliveryStatuses": { "type": "object", "description": "Map of contact delivery statuses" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["alertId", "senderId", "senderName", "status", "latitude", "longitude", "triggerMethod", "authorizedUids", "createdAt"]
+    },
+    "SafetyCircle": {
+      "title": "SafetyCircle",
+      "description": "Safety Circle group connecting family guardians",
+      "type": "object",
+      "properties": {
+        "circleId": { "type": "string", "description": "Circle ID" },
+        "circleName": { "type": "string", "description": "Circle group name" },
+        "ownerId": { "type": "string", "description": "Circle creator UID" },
+        "inviteCode": { "type": "string", "description": "6-character invite code" },
+        "memberUids": { "type": "array", "description": "List of member UIDs" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["circleId", "circleName", "ownerId", "inviteCode", "memberUids", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/emergency_alerts/{alertId}": {
+      "schema": "EmergencyAlert",
+      "description": "Real-time backend SOS events accessible by sender and authorized circle/contacts"
+    },
+    "/safety_circles/{circleId}": {
+      "schema": "SafetyCircle",
+      "description": "Family Guardian Circles"
+    }
+  }
+}
